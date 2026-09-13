@@ -1,0 +1,22 @@
+config:
+  # Wrap Markdown prose at 80 columns. Code blocks and tables keep their
+  # natural width so commands stay copy-pasteable and tables stay readable.
+  MD013:
+    line_length: 80
+    code_blocks: false
+    tables: false
+
+# Verbatim upstream reference copies and generated output are not authored
+# here, so they are not held to this repository's Markdown style.
+ignores:
+  - "node_modules/**"
+  - "dist/**"
+  - "build/**"
+  - "coverage/**"
+  - ".agents/references/**"
+  # Private local scratch notes, gitignored and not authored for review.
+  - "**/*.local.md"
+  # Local working directories, gitignored. markdownlint-cli2 does not read
+  # .gitignore, so they need listing here to keep `lint:md` clean locally.
+  - "tmp/**"
+  - "handoff/**"

@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+package-lock.json
+
+# Markdown is governed by markdownlint, not Prettier, so the two formatters
+# never disagree about the same file.
+*.md

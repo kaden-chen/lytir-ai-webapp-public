@@ -1,0 +1,58 @@
+{
+  "name": "lytir-ai-webapp",
+  "version": "0.9.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:md": "markdownlint-cli2 \"**/*.md\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@mantine/core": "9.6.0",
+    "@mantine/hooks": "9.6.0",
+    "@tanstack/react-query": "5.102.8",
+    "firebase": "12.18.0",
+    "maplibre-gl": "6.8.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-map-gl": "8.1.3",
+    "react-markdown": "10.1.0",
+    "react-router": "8.3.1",
+    "remark-gfm": "4.0.1"
+  },
+  "devDependencies": {
+    "@testing-library/react": "16.3.3",
+    "@types/geojson": "7946.0.16",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "eslint": "10.10.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.6",
+    "globals": "17.12.0",
+    "jsdom": "30.0.1",
+    "markdownlint-cli2": "0.23.2",
+    "postcss": "8.5.28",
+    "postcss-preset-mantine": "1.18.0",
+    "postcss-simple-vars": "7.0.1",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.69.0",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "smol-toml": "1.7.2"
+  }
+}
