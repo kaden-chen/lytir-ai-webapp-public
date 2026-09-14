@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Lytir AI</title>
+  <!-- The application's own encoding, at 32 pixels: a warm magnitude mark over
+       the dark basemap, with two rings standing in for the seismic wave. The
+       colours are the top and bottom of the magnitude ramp in
+       earthquakeLayers.ts rather than arbitrary ones. -->
+  <rect width="32" height="32" rx="7" fill="#1a1b1e" />
+  <circle cx="16" cy="16" r="11" fill="none" stroke="#f76707" stroke-opacity="0.35" stroke-width="1.5" />
+  <circle cx="16" cy="16" r="7" fill="none" stroke="#ff922b" stroke-opacity="0.6" stroke-width="1.5" />
+  <circle cx="16" cy="16" r="3.5" fill="#ffe066" />
+</svg>

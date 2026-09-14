@@ -1,0 +1,36 @@
+/* MapLibre's popup chrome is hard-coded white. Mantine's text colour follows
+   the colour scheme, so in dark mode the popup would render light text on a
+   white card and be unreadable. Binding the popup to the same Mantine
+   variables as the rest of the interface keeps the two in step, including the
+   tip, whose border colour is what draws the little arrow. */
+.maplibregl-popup-content {
+  padding: var(--mantine-spacing-sm);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+  box-shadow: var(--mantine-shadow-md);
+}
+
+/* The anchor class carries the side the popup opened on, including the corner
+   variants, so each is matched by prefix rather than listed exactly. */
+[class*="maplibregl-popup-anchor-top"] .maplibregl-popup-tip {
+  border-bottom-color: var(--mantine-color-body);
+}
+
+[class*="maplibregl-popup-anchor-bottom"] .maplibregl-popup-tip {
+  border-top-color: var(--mantine-color-body);
+}
+
+.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--mantine-color-body);
+}
+
+.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--mantine-color-body);
+}
+
+.maplibregl-popup-close-button {
+  padding-right: var(--mantine-spacing-xs);
+  color: var(--mantine-color-text);
+  font-size: var(--mantine-font-size-md);
+}

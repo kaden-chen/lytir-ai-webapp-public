@@ -1,0 +1,26 @@
+/* The section header is a full-width button that must not look like one. It
+   carries the panel's only structural line, a hover tint to show it is
+   pressable, and an explicit focus ring because UnstyledButton ships none. */
+.lytir-section-header {
+  display: block;
+  width: 100%;
+  padding: 9px var(--mantine-spacing-sm);
+  border-bottom: 1px solid
+    light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  background: transparent;
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.lytir-section-header:hover {
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-6)
+  );
+}
+
+/* Keyboard focus only. A mouse press should not leave a ring behind it. */
+.lytir-section-header:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}

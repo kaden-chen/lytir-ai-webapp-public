@@ -1,0 +1,4 @@
+interface:
+  display_name: "Generate handoff"
+  short_description: "Create a private local branch handoff note"
+  default_prompt: "Use $handoff-script-gen to create a local handoff for the current branch."

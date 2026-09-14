@@ -1,0 +1,138 @@
+name: Deploy Lytir AI Web App [Staging]
+
+# Triggered by a push to dev. A pull_request trigger cannot be used: the
+# deploy action always treats a pull_request event as a preview environment
+# named after the PR number, so production would never receive the build.
+#
+# Branch protection is unavailable on this plan (private repository on GitHub
+# Free), so the first job step asks the API whether the pushed commit came
+# from a pull request merged into dev, and refuses to deploy when it did not.
+# workflow_dispatch bypasses that check deliberately, as a manual escape hatch.
+on:
+  push:
+    branches: [dev]
+    paths-ignore:
+      - "**.md"
+      - ".agents/**"
+      - ".vscode/**"
+      - "docs/**"
+      - ".env.example"
+      - ".gitignore"
+      - ".markdownlint-cli2.yaml"
+      - ".prettierignore"
+      - ".prettierrc.json"
+      - "eslint.config.js"
+      - "LICENSE"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy to staging
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Require a pull request merged into dev
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          merged=$(gh api "repos/$REPO/commits/$SHA/pulls" \
+            --jq "[.[] | select(.merged_at != null and .base.ref == \"dev\" and .merge_commit_sha == \"$SHA\")] | length")
+          if [ "$merged" -eq 0 ]; then
+            echo "✗ $SHA did not arrive through a pull request merged into dev." >&2
+            echo "  Refusing to deploy unreviewed code. Open a pull request instead," >&2
+            echo "  or run this workflow manually if the push was intentional." >&2
+            exit 1
+          fi
+          echo "✓ Commit came from a merged pull request; continuing."
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint Markdown
+        run: npm run lint:md
+
+      - name: Test
+        run: npm test
+
+      - name: Verify required build configuration
+        env:
+          VITE_APP_VERSION: ${{ vars.VITE_APP_VERSION }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_MAP_STYLE_LIGHT: ${{ vars.VITE_MAP_STYLE_LIGHT }}
+          VITE_MAP_STYLE_DARK: ${{ vars.VITE_MAP_STYLE_DARK }}
+          VITE_API_DIAG_URL: ${{ vars.VITE_API_DIAG_URL }}
+          VITE_API_EARTHQUAKES_URL: ${{ vars.VITE_API_EARTHQUAKES_URL }}
+          VITE_API_AI_QA_URL: ${{ vars.VITE_API_AI_QA_URL }}
+        run: |
+          # A missing Firebase value builds an application that looks fine and
+          # silently cannot sign anyone in; a missing basemap style builds one
+          # whose map never appears. Fail here instead.
+          missing=""
+          for name in VITE_APP_VERSION VITE_FIREBASE_API_KEY \
+            VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
+            VITE_FIREBASE_APP_ID VITE_MAP_STYLE_LIGHT \
+            VITE_MAP_STYLE_DARK VITE_API_DIAG_URL \
+            VITE_API_EARTHQUAKES_URL VITE_API_AI_QA_URL; do
+            if [ -z "${!name}" ]; then
+              missing="$missing $name"
+            fi
+          done
+          if [ -n "$missing" ]; then
+            echo "Not set for the staging environment:$missing" >&2
+            echo "Add them under Environments > staging > Environment variables." >&2
+            exit 1
+          fi
+          echo "✓ All required build configuration is present."
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_APP_VERSION: ${{ vars.VITE_APP_VERSION }}
+          VITE_FIREBASE_API_KEY: ${{ vars.VITE_FIREBASE_API_KEY }}
+          VITE_FIREBASE_AUTH_DOMAIN: ${{ vars.VITE_FIREBASE_AUTH_DOMAIN }}
+          VITE_FIREBASE_PROJECT_ID: ${{ vars.VITE_FIREBASE_PROJECT_ID }}
+          VITE_FIREBASE_APP_ID: ${{ vars.VITE_FIREBASE_APP_ID }}
+          VITE_MAP_STYLE_LIGHT: ${{ vars.VITE_MAP_STYLE_LIGHT }}
+          VITE_MAP_STYLE_DARK: ${{ vars.VITE_MAP_STYLE_DARK }}
+          VITE_API_DIAG_URL: ${{ vars.VITE_API_DIAG_URL }}
+          VITE_API_EARTHQUAKES_URL: ${{ vars.VITE_API_EARTHQUAKES_URL }}
+          VITE_API_AI_QA_URL: ${{ vars.VITE_API_AI_QA_URL }}
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
+          action: upload
+          app_location: dist
+          skip_app_build: true
+          skip_api_build: true
+          production_branch: dev

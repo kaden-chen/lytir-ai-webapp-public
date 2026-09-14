@@ -1,0 +1,3 @@
+interface:
+  display_name: "Sync from Dev"
+  short_description: "Create a pull request from dev to this branch"

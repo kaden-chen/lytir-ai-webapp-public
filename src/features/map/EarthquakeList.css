@@ -1,0 +1,96 @@
+/* The place name is the row's control, but it is read as data first. It
+   inherits the body colour instead of the link colour so that warm magnitude
+   marks stay the only saturated thing in the table, and announces itself as
+   pressable on hover and keyboard focus instead. */
+.lytir-place-button {
+  display: block;
+  width: 100%;
+  color: inherit;
+  text-align: left;
+}
+
+.lytir-place-button:hover {
+  text-decoration: underline;
+  text-decoration-color: light-dark(
+    var(--mantine-color-gray-5),
+    var(--mantine-color-dark-2)
+  );
+  text-underline-offset: 2px;
+}
+
+.lytir-place-button:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+  border-radius: var(--mantine-radius-xs);
+}
+
+/* Column headings are labels, not content. Small, letterspaced and dimmed
+   makes them recede behind the data they name, which is what lets the table
+   read as a list of earthquakes rather than as a spreadsheet. */
+.lytir-quake-table thead th {
+  padding-top: 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid
+    light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-dimmed);
+  font-size: var(--mantine-font-size-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Rows carry no fill of their own, so the one selected row is unmistakable.
+   The tint is mixed to a few percent: enough to find at a glance, not enough
+   to compete with the warm magnitude marks. The left edge repeats the state
+   without depending on colour at all. */
+/* The card list. No bullets, no inherited list padding, and a hairline
+   between cards instead of a border around each: one surface, not a stack of
+   boxes. */
+.lytir-quake-cards {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.lytir-quake-card {
+  display: block;
+  width: 100%;
+  padding: 10px var(--mantine-spacing-sm);
+  border-top: 1px solid
+    light-dark(var(--mantine-color-gray-2), var(--mantine-color-dark-6));
+  color: inherit;
+  text-align: left;
+}
+
+.lytir-quake-card:hover {
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-6)
+  );
+}
+
+/* A 44px minimum touch target is the reason for the padding above; the focus
+   ring is inset so it is not clipped by the panel's own scrolling. */
+.lytir-quake-card:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}
+
+.lytir-quake-card[data-selected] {
+  background: color-mix(
+    in srgb,
+    var(--mantine-primary-color-filled) 9%,
+    transparent
+  );
+  box-shadow: inset 3px 0 0 0 var(--mantine-primary-color-filled);
+}
+
+.lytir-quake-table tbody tr[data-selected] {
+  background: color-mix(
+    in srgb,
+    var(--mantine-primary-color-filled) 9%,
+    transparent
+  );
+  box-shadow: inset 3px 0 0 0 var(--mantine-primary-color-filled);
+}

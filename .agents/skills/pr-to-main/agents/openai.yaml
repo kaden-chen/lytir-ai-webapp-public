@@ -1,0 +1,3 @@
+interface:
+  display_name: "PR to Main"
+  short_description: "Create a release pull request from dev to main"

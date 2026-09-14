@@ -1,0 +1,3 @@
+interface:
+  display_name: "Commit and Push"
+  short_description: "Commit and push changes with ticket references"

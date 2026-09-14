@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pick up latest handoff"
+  short_description: "Resume work from the latest local handoff"
+  default_prompt: "Use $handoff-script-pickup to review the latest local handoff and current branch state."
