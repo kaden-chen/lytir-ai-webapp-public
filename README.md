@@ -18,8 +18,10 @@ and coloured by magnitude, and paired with a table that is both the accessible
 equivalent of the canvas and the keyboard route to any single event. A
 magnitude legend and selectable time windows are still outstanding.
 
-The AI assistant and administration follow in later phases, where the frontend
-integrates with the existing Lytir AI backend and its single-round Q&A API.
+The AI assistant supports independent, single-round questions through the API
+edge. A separate administration view lets an authorized operator trigger an
+earthquake-data refresh and inspect the backend's response; the API edge, not
+the client-side control, enforces that authorization.
 
 Architecture and technology decisions are settled and recorded in
 [docs/01-frontend-architecture.md](docs/01-frontend-architecture.md).
@@ -28,11 +30,13 @@ Architecture and technology decisions are settled and recorded in
 
 <https://lemon-water-0955abb10.3.azurestaticapps.net>
 
-Deployed from `dev` by GitHub Actions. The site has no anonymous content, so it
-opens on the sign-in page; accounts are created by hand in the Firebase
-console. That hostname is the default one Azure assigned the Static Web App and
-would change if the resource were recreated — the `staging` environment in
-GitHub records the authoritative URL of each deployment.
+Staging deployments are started manually from the **Deploy Lytir AI Web App
+[Staging]** workflow in GitHub Actions and run against `dev`; pushes do not
+deploy automatically. The site has no anonymous content, so it opens on the
+sign-in page; accounts are created by hand in the Firebase console. That
+hostname is the default one Azure assigned the Static Web App and would change
+if the resource were recreated — the `staging` environment in GitHub records
+the authoritative URL of each deployment.
 
 ## Experience
 
@@ -45,7 +49,7 @@ On the map:
 - Read the same events as a table, choose one to fly the map to it, and resize
   the two against each other.
 
-Planned for the assistant:
+In the assistant:
 
 - Ask one independent natural-language question at a time.
 - Render Markdown answers safely.
@@ -55,6 +59,15 @@ Planned for the assistant:
 - Explain when a requested period falls outside Lytir's available data.
 - Provide useful loading, validation, timeout, and service-error states.
 - Support responsive desktop and mobile layouts.
+
+In administration:
+
+- Let an administrator request the latest earthquake data through the API
+  edge.
+- Reload the map and table after a successful refresh and display the complete
+  response as evidence of the run.
+- Keep the control visible but disabled for other users; the API edge remains
+  the authorization boundary.
 
 Example questions:
 
@@ -279,9 +292,10 @@ time, so every environment needs its own build. Never put a secret in one. See
 | `VITE_API_DIAG_URL` | Full edge URL of the diagnostics endpoint |
 | `VITE_API_EARTHQUAKES_URL` | Full edge URL of the earthquakes endpoint |
 | `VITE_API_AI_QA_URL` | Full edge URL of the question and answer endpoint |
+| `VITE_API_ADMIN_SYNC_DATA_URL` | Full edge URL of the administrator data refresh endpoint |
 
 Each API is configured as its own full URL rather than a shared base with paths
-in code, so an endpoint can be repointed without a release. All ten are
+in code, so an endpoint can be repointed without a release. All eleven are
 required. The application reports any that are missing at startup
 instead of failing later, and the staging deployment fails the build rather
 than publishing an application that cannot sign anyone in.
