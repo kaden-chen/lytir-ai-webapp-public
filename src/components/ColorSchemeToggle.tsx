@@ -49,7 +49,7 @@ function MoonIcon() {
  * Two states rather than three: "auto" is a sensible default but a poor
  * control, because a reader pressing a button wants the screen to change and
  * "follow the system" may not change it at all. The starting value is still
- * the dark default; this only lets it be overridden, and Mantine persists the
+ * the light default; this only lets it be overridden, and Mantine persists the
  * choice so it survives a reload.
  *
  * The icon shows the scheme being offered, not the current one, and the label
@@ -60,7 +60,7 @@ export function ColorSchemeToggle() {
   const { setColorScheme } = useMantineColorScheme();
   // Resolves "auto" to whichever scheme is actually on screen, so the button
   // always offers the opposite of what the reader is looking at.
-  const computed = useComputedColorScheme("dark");
+  const computed = useComputedColorScheme("light");
   const next = computed === "dark" ? "light" : "dark";
   const label = next === "dark" ? "Use dark theme" : "Use light theme";
 
