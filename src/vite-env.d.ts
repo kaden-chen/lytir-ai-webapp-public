@@ -11,6 +11,7 @@ interface ImportMetaEnv {
   readonly VITE_API_DIAG_URL: string;
   readonly VITE_API_EARTHQUAKES_URL: string;
   readonly VITE_API_AI_QA_URL: string;
+  readonly VITE_API_ADMIN_SYNC_DATA_URL: string;
 }
 
 interface ImportMeta {

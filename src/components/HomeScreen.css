@@ -1,0 +1,26 @@
+/* The panels are chrome around the data, so they sit on their own surface and
+   the map is the only near-white area on screen. Flat rather than translucent
+   on purpose: over a moving globe, a semi-transparent panel's contrast becomes
+   a function of whatever is behind it at the time — a dark ocean, pale land,
+   or a magnitude mark showing through a row of text. */
+.lytir-panel {
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-7)
+  );
+}
+
+/* On a narrow viewport the destinations become a bar at the foot of the
+   screen. It sits below the splitter rather than inside it, so dragging the
+   divider never moves it, and at the bottom rather than the top because it
+   drives the section beneath the map and because the top of a tall phone is
+   the hardest place to reach with a thumb. */
+.lytir-tabbar {
+  flex: 0 0 auto;
+  border-top: 1px solid
+    light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-7)
+  );
+}

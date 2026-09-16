@@ -1,9 +1,23 @@
-import { Suspense, lazy, useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Center, Loader, Splitter, Text } from "@mantine/core";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Alert, Box, Center, Loader, Splitter, Text } from "@mantine/core";
+import "@/components/HomeScreen.css";
+import type { UseSplitterReturnValue } from "@mantine/hooks";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import type { MapRef } from "react-map-gl/maplibre";
-import { PanelSection } from "@/components/PanelSection";
+import type { SectionTab } from "@/components/SectionTabs";
+import { SectionTabs } from "@/components/SectionTabs";
+import type { RailItem } from "@/components/ViewRail";
+import { ViewRail } from "@/components/ViewRail";
+import { AdminView } from "@/features/admin/AdminView";
 import { EarthquakeList } from "@/features/map/EarthquakeList";
 import { EarthquakeMap } from "@/features/map/EarthquakeMap";
 import type {
@@ -11,6 +25,7 @@ import type {
   SelectedEarthquake,
 } from "@/features/map/earthquakes";
 import {
+  EARTHQUAKES_QUERY_KEY,
   fetchEarthquakes,
   toFeatureCollection,
   toProperties,
@@ -36,12 +51,60 @@ const REFETCH_INTERVAL_MS = 60_000;
 // event as itself rather than leaving it hidden inside a cluster.
 const SELECTED_ZOOM = EARTHQUAKE_CLUSTER_MAX_ZOOM + 1;
 
-// Mantine's `md` breakpoint. Above it the map and the panel sit side by side and
-// the divider adjusts width; below it they stack and it adjusts height.
+// Mantine's `md` breakpoint. Above it the two panels flank the map and the
+// dividers adjust width; below it one section at a time sits under the map.
 const WIDE_VIEWPORT = "(min-width: 62em)";
 
-const EARTHQUAKES_SECTION = "earthquakes";
-const ASSISTANT_SECTION = "assistant";
+const EARTHQUAKES = "earthquakes";
+const ASSISTANT = "assistant";
+const ADMIN = "admin";
+
+type SectionId = typeof EARTHQUAKES | typeof ASSISTANT | typeof ADMIN;
+
+// Administration is last and present for everyone. The view itself disables
+// its controls for a reader without the role and says why, so the interface
+// has one shape and later views that manage a reader's own work have a home.
+const TABS: SectionTab[] = [
+  { id: EARTHQUAKES, label: "Earthquakes" },
+  { id: ASSISTANT, label: "Ask Lytir" },
+  { id: ADMIN, label: "Admin" },
+];
+
+// The wide layout uses an activity bar instead. The two panel views sit at the
+// top and the assistant at the foot, because it opens the other side of the
+// screen and grouping it with them would imply it replaces them.
+const RAIL_ITEMS: RailItem[] = [
+  { id: EARTHQUAKES, label: "Earthquakes", icon: "earthquakes" },
+  { id: ADMIN, label: "Admin", icon: "admin" },
+  { id: ASSISTANT, label: "Ask Lytir", icon: "assistant", atEnd: true },
+];
+
+const SIDEBAR_TITLES: Record<string, string> = {
+  [EARTHQUAKES]: "Recent earthquakes",
+  [ADMIN]: "Admin",
+};
+
+// Panes keep this order at every width so the map never changes its position
+// in the tree. Swapping trees at the breakpoint would unmount it and discard
+// the view the reader had navigated to.
+const LEFT_PANE = 0;
+const RIGHT_PANE = 2;
+
+interface LayoutState {
+  /** Which of the two left-hand views the wide layout shows. */
+  leftView: typeof EARTHQUAKES | typeof ADMIN;
+  leftOpen: boolean;
+  rightOpen: boolean;
+  /** The narrow layout shows one section at a time, or none. */
+  active: SectionId | null;
+}
+
+const DEFAULT_LAYOUT: LayoutState = {
+  leftView: EARTHQUAKES,
+  leftOpen: true,
+  rightOpen: true,
+  active: EARTHQUAKES,
+};
 
 export function HomeScreen() {
   // Measured during the first render rather than in an effect. The splitter
@@ -52,32 +115,89 @@ export function HomeScreen() {
     getInitialValueInEffect: false,
   });
   const mapRef = useRef<MapRef>(null);
+  const splitterRef = useRef<UseSplitterReturnValue | null>(null);
   // The selection is deliberately transient and never reaches the URL: the
   // backend reselects the document UUID when a duplicate ingestion wins
   // deduplication, so a shared link to one would eventually resolve to nothing.
   const [selected, setSelected] = useState<SelectedEarthquake | null>(null);
 
-  // Remembered, so someone who works with the assistant open finds it open.
-  const [openSections, setOpenSections] = useLocalStorage<string[]>({
-    key: "lytir-open-sections",
-    defaultValue: [EARTHQUAKES_SECTION],
+  // Remembered, so someone who works with the assistant closed finds it
+  // closed. Panel widths are not: they are splitter defaults, and a reader
+  // who re-tunes them on every load is a question for later.
+  const [layout, setLayout] = useLocalStorage<LayoutState>({
+    key: "lytir-layout",
+    defaultValue: DEFAULT_LAYOUT,
     getInitialValueInEffect: false,
   });
 
-  const isOpen = (section: string) => openSections.includes(section);
+  const isActive = (id: string) =>
+    wideViewport
+      ? id === ASSISTANT
+        ? layout.rightOpen
+        : layout.leftOpen && layout.leftView === id
+      : layout.active === id;
 
-  const toggle = (section: string) =>
-    setOpenSections((previous) =>
-      previous.includes(section)
-        ? previous.filter((open) => open !== section)
-        : [...previous, section],
-    );
+  // Pressing the active tab closes its panel, at both widths. On a narrow
+  // viewport opening one section closes the others, because there is no room
+  // for two and the crowding is what made the previous stack unreadable.
+  const press = (id: string) => {
+    const section = id as SectionId;
 
-  // Once the assistant has been opened it stays mounted, so collapsing the
-  // section to glance at the map does not discard the conversation.
+    setLayout((previous) => {
+      if (!wideViewport) {
+        return {
+          ...previous,
+          active: previous.active === section ? null : section,
+        };
+      }
+
+      if (section === ASSISTANT) {
+        return { ...previous, rightOpen: !previous.rightOpen };
+      }
+
+      const sameView = previous.leftView === section;
+
+      return {
+        ...previous,
+        leftView: section,
+        leftOpen: sameView ? !previous.leftOpen : true,
+      };
+    });
+  };
+
+  const leftPaneOpen = wideViewport && layout.leftOpen;
+  const rightPaneOpen = wideViewport
+    ? layout.rightOpen
+    : layout.active !== null;
+
+  // The panes stay mounted and are collapsed to nothing, rather than being
+  // removed: unmounting the right pane would discard a conversation every time
+  // someone closed the assistant to look at the map.
+  useEffect(() => {
+    const splitter = splitterRef.current;
+
+    if (!splitter) {
+      return;
+    }
+
+    if (leftPaneOpen) {
+      splitter.expand(LEFT_PANE);
+    } else {
+      splitter.collapse(LEFT_PANE);
+    }
+
+    if (rightPaneOpen) {
+      splitter.expand(RIGHT_PANE);
+    } else {
+      splitter.collapse(RIGHT_PANE);
+    }
+  }, [leftPaneOpen, rightPaneOpen]);
+
+  // Mounted on first use and kept, so the Markdown renderer is downloaded once
+  // and a closed assistant keeps its transcript.
   const assistantMounted = useRef(false);
 
-  if (isOpen(ASSISTANT_SECTION)) {
+  if (isActive(ASSISTANT)) {
     assistantMounted.current = true;
   }
 
@@ -85,7 +205,7 @@ export function HomeScreen() {
   // what it used in `time_range`. Computing the window here would make the
   // browser's clock the authority on what "recent" means, which it is not.
   const { data, error, isPending } = useQuery({
-    queryKey: ["earthquakes"],
+    queryKey: EARTHQUAKES_QUERY_KEY,
     queryFn: () => fetchEarthquakes(),
     refetchInterval: REFETCH_INTERVAL_MS,
   });
@@ -109,96 +229,184 @@ export function HomeScreen() {
     });
   }, []);
 
-  return (
-    // One splitter that turns with the layout, rather than a separate tree per
-    // breakpoint: swapping trees would unmount the map and lose the view the
-    // reader had navigated to every time the window crossed the breakpoint.
-    <Splitter
-      h={SCREEN_HEIGHT}
-      orientation={wideViewport ? "horizontal" : "vertical"}
-    >
-      {/* A globe stays legible small, while a table and a conversation do not,
-          so the map is what gives up room. Stacked it keeps 40%; side by side
-          it keeps 60%, which is still a large globe and leaves the panel wide
-          enough for an answer with a table in it. The divider settles it. */}
-      <Splitter.Pane
-        defaultSize={wideViewport ? "60%" : "40%"}
-        min={wideViewport ? "30%" : "20%"}
-      >
-        <EarthquakeMap
-          mapRef={mapRef}
-          data={collection}
-          selected={selected}
-          onSelect={setSelected}
-        />
-      </Splitter.Pane>
-      {/* The floor is the stack of collapsed headers: the panel never empties,
-          so dragging the divider across leaves a strip of labels and gives the
-          map nearly everything, without a separate full-map mode. */}
-      <Splitter.Pane
-        defaultSize={wideViewport ? "40%" : "60%"}
-        min="150px"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          minHeight: 0,
-          // The panel owns the scrolling for its content sections, so there is
-          // one scrollbar here rather than one inside each of them.
-          overflowY: "auto",
-        }}
-      >
-        {/* The assistant comes first because it is the reason to open the
-            panel at all, and the top of a stack is where attention starts.
-            Below a full-height table it sat on the bottom edge of the window
-            and was missed entirely. */}
-        <PanelSection
-          title="Ask Lytir"
-          open={isOpen(ASSISTANT_SECTION)}
-          onToggle={() => toggle(ASSISTANT_SECTION)}
-        >
-          {assistantMounted.current ? (
-            <Suspense
-              fallback={
-                <Center p="lg">
-                  <Loader size="sm" />
-                </Center>
-              }
-            >
-              <Assistant />
-            </Suspense>
-          ) : null}
-        </PanelSection>
+  const earthquakes = error ? (
+    <Alert color="red" title="Could not load earthquakes" m="sm">
+      <Text size="sm">{error.message}</Text>
+      {error instanceof ApiError && error.correlationId ? (
+        <Text size="xs" c="dimmed" mt="xs">
+          Correlation ID: {error.correlationId}
+        </Text>
+      ) : null}
+    </Alert>
+  ) : isPending ? (
+    <Text size="sm" c="dimmed" p="sm">
+      Loading earthquakes…
+    </Text>
+  ) : (
+    <EarthquakeList
+      items={items}
+      onSelect={handleSelectFromList}
+      selectedId={selected?.properties.id ?? null}
+      // Read from the response rather than restated from the contract, so the
+      // label cannot disagree with the data above it.
+      windowLabel={formatWindowLabel(data?.time_range)}
+    />
+  );
 
-        <PanelSection
-          title="Recent earthquakes"
-          open={isOpen(EARTHQUAKES_SECTION)}
-          onToggle={() => toggle(EARTHQUAKES_SECTION)}
+  const assistant = assistantMounted.current ? (
+    <Suspense
+      fallback={
+        <Center p="lg">
+          <Loader size="sm" />
+        </Center>
+      }
+    >
+      {/* A phone has no height to spare, so the composer starts at one row
+          and grows; a full-height panel can afford to show three. */}
+      <Assistant compact={!wideViewport} />
+    </Suspense>
+  ) : null;
+
+  // `hidden` rather than omitted, so a closed or unselected section keeps its
+  // state and is hidden from assistive technology rather than merely sized to
+  // nothing by the splitter.
+  const section = (id: SectionId, content: React.ReactNode, fill = false) => {
+    const active = isActive(id);
+
+    return (
+      <Box
+        hidden={!active}
+        // No `display` is set while hidden, because an inline `display` beats
+        // the user-agent rule behind the `hidden` attribute and would show the
+        // section again. A filling section manages its own scrolling; the
+        // others scroll here.
+        style={
+          active
+            ? fill
+              ? {
+                  flex: 1,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                }
+              : { flex: 1, minHeight: 0, overflowY: "auto" }
+            : { minHeight: 0 }
+        }
+      >
+        {content}
+      </Box>
+    );
+  };
+
+  const sidebarTitle = SIDEBAR_TITLES[layout.leftView] ?? "";
+
+  return (
+    // The activity bar sits outside the splitter, at a fixed width on the
+    // frame's outer edge, so it is never resized and never scrolls away. On a
+    // narrow viewport a 48px strip of icons has nowhere to go, so the same
+    // destinations become a row of labelled buttons above the content.
+    <Box
+      style={{
+        display: "flex",
+        flexDirection: wideViewport ? "row" : "column",
+        height: SCREEN_HEIGHT,
+      }}
+    >
+      {wideViewport ? (
+        <ViewRail items={RAIL_ITEMS} isActive={isActive} onPress={press} />
+      ) : null}
+      <Splitter
+        splitterRef={splitterRef}
+        orientation={wideViewport ? "horizontal" : "vertical"}
+        style={{ flex: 1, minWidth: 0, minHeight: 0 }}
+      >
+        {/* The sidebar: one view at a time, chosen from the rail. A fixed
+            pixel width rather than a share of the window, because a table
+            needs the room it needs — a percentage hands a small laptop a
+            column too narrow to read and a large monitor more than it uses.
+            Collapsed to nothing on a narrow viewport, where everything shares
+            the pane below the map. */}
+        <Splitter.Pane
+          defaultSize={wideViewport ? "360px" : "0%"}
+          min={wideViewport ? "180px" : "0%"}
+          collapsible
+          className="lytir-panel"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            minWidth: 0,
+          }}
         >
-          {error ? (
-            <Alert color="red" title="Could not load earthquakes" m="sm">
-              <Text size="sm">{error.message}</Text>
-              {error instanceof ApiError && error.correlationId ? (
-                <Text size="xs" c="dimmed" mt="xs">
-                  Correlation ID: {error.correlationId}
-                </Text>
-              ) : null}
-            </Alert>
-          ) : isPending ? (
-            <Text size="sm" c="dimmed" p="sm">
-              Loading earthquakes…
-            </Text>
+          {wideViewport ? (
+            <>
+              <Text
+                size="xs"
+                fw={600}
+                c="dimmed"
+                tt="uppercase"
+                px="sm"
+                py={8}
+                style={{ letterSpacing: "0.04em", flex: "0 0 auto" }}
+              >
+                {sidebarTitle}
+              </Text>
+              {section(EARTHQUAKES, earthquakes)}
+              {section(ADMIN, <AdminView />, true)}
+            </>
+          ) : null}
+        </Splitter.Pane>
+
+        {/* A globe stays legible small, while a table and a conversation do
+            not, so the map is what gives up room when a panel opens. */}
+        <Splitter.Pane
+          defaultSize={wideViewport ? 60 : "40%"}
+          min={wideViewport ? "240px" : "20%"}
+        >
+          <EarthquakeMap
+            mapRef={mapRef}
+            data={collection}
+            selected={selected}
+            onSelect={setSelected}
+          />
+        </Splitter.Pane>
+
+        {/* Right: the assistant on a wide viewport, and whichever single
+            section is selected on a narrow one. The assistant stays in this
+            pane at both widths, so crossing the breakpoint never remounts it
+            and never discards a conversation. */}
+        <Splitter.Pane
+          defaultSize={wideViewport ? "380px" : "60%"}
+          min={wideViewport ? "260px" : "0%"}
+          collapsible
+          className="lytir-panel"
+          // The assistant fills this pane and scrolls inside itself, so the
+          // pane must not scroll as well or the composer would leave the foot
+          // of the panel as the transcript grew.
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            minHeight: 0,
+            minWidth: 0,
+            overflow: "hidden",
+          }}
+        >
+          {wideViewport ? (
+            section(ASSISTANT, assistant, true)
           ) : (
-            <EarthquakeList
-              items={items}
-              onSelect={handleSelectFromList}
-              selectedId={selected?.properties.id ?? null}
-              // Read from the response rather than restated from the
-              // contract, so the label cannot disagree with the data above it.
-              windowLabel={formatWindowLabel(data?.time_range)}
-            />
+            <>
+              {section(EARTHQUAKES, earthquakes)}
+              {section(ASSISTANT, assistant, true)}
+              {section(ADMIN, <AdminView />, true)}
+            </>
           )}
-        </PanelSection>
-      </Splitter.Pane>
-    </Splitter>
+        </Splitter.Pane>
+      </Splitter>
+      {wideViewport ? null : (
+        <Box className="lytir-tabbar">
+          <SectionTabs tabs={TABS} isActive={isActive} onPress={press} />
+        </Box>
+      )}
+    </Box>
   );
 }

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EarthquakesResponse } from "@/features/map/earthquakes";
 
 // jsdom has no WebGL context, so the map itself is replaced by marker elements.
@@ -154,19 +154,51 @@ beforeEach(() => {
   localStorage.clear();
 });
 
+// The global stub reports every media query as unmatched, so the tests above
+// and below exercise the narrow layout. The wide one is opted into explicitly.
+function stubViewport(wide: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: wide && query.includes("62em"),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 describe("panel sections", () => {
-  it("starts with the earthquake table open and the assistant closed", async () => {
+  it("starts on the earthquake table with the other sections closed", async () => {
     fetchEarthquakesMock.mockResolvedValue(RESPONSE);
     renderScreen();
 
     expect(
       await screen.findByRole("table", { name: "Recent earthquakes" }),
     ).toBeTruthy();
+    // Toggle buttons rather than tabs, because pressing the active one closes
+    // its panel and a tablist cannot express "nothing selected".
     expect(
       screen
         .getByRole("button", { name: "Ask Lytir" })
-        .getAttribute("aria-expanded"),
+        .getAttribute("aria-pressed"),
     ).toBe("false");
+  });
+
+  it("shows one section at a time on a narrow viewport", async () => {
+    fetchEarthquakesMock.mockResolvedValue(RESPONSE);
+    renderScreen();
+
+    await screen.findByRole("table", { name: "Recent earthquakes" });
+    fireEvent.click(screen.getByRole("button", { name: "Ask Lytir" }));
+
+    // Opening one closes the others: there is no room for two, and the
+    // crowding is what made the previous stack unreadable on a phone.
+    expect(await screen.findByTestId("assistant")).toBeTruthy();
+    expect(
+      screen.queryByRole("table", { name: "Recent earthquakes" }),
+    ).toBeNull();
   });
 
   it("does not load the assistant until its section is opened", () => {
@@ -189,26 +221,83 @@ describe("panel sections", () => {
     fetchEarthquakesMock.mockResolvedValue(RESPONSE);
     renderScreen();
 
-    const header = screen.getByRole("button", { name: "Ask Lytir" });
-    fireEvent.click(header);
+    const tab = screen.getByRole("button", { name: "Ask Lytir" });
+    fireEvent.click(tab);
     await screen.findByTestId("assistant");
 
-    fireEvent.click(header);
+    fireEvent.click(tab);
 
-    expect(header.getAttribute("aria-expanded")).toBe("false");
+    expect(tab.getAttribute("aria-pressed")).toBe("false");
+    // Hidden rather than unmounted, and the panes collapse rather than being
+    // removed, so closing the assistant does not discard a transcript.
     expect(screen.getByTestId("assistant")).toBeTruthy();
   });
 
-  it("lets the table be collapsed too, which a phone needs", async () => {
+  it("closes the open section when its own tab is pressed again", async () => {
     fetchEarthquakesMock.mockResolvedValue(RESPONSE);
     renderScreen();
 
     await screen.findByRole("table", { name: "Recent earthquakes" });
-    fireEvent.click(screen.getByRole("button", { name: "Recent earthquakes" }));
+    fireEvent.click(screen.getByRole("button", { name: "Earthquakes" }));
 
+    // Nothing selected is a reachable state, which is how a phone reader gives
+    // the whole screen back to the map.
     expect(
       screen.queryByRole("table", { name: "Recent earthquakes" }),
     ).toBeNull();
+  });
+
+  it("offers administration to every reader", async () => {
+    fetchEarthquakesMock.mockResolvedValue(RESPONSE);
+    renderScreen();
+
+    fireEvent.click(screen.getByRole("button", { name: "Admin" }));
+
+    // Shown to everyone; the view disables its own controls without the role
+    // rather than the tab disappearing.
+    expect(
+      await screen.findByRole("button", { name: /Fetch latest from USGS/ }),
+    ).toBeTruthy();
+  });
+});
+
+describe("panel sections on a wide viewport", () => {
+  beforeEach(() => {
+    stubViewport(true);
+  });
+
+  afterEach(() => {
+    stubViewport(false);
+  });
+
+  it("flanks the map with both panels, so the assistant is not hidden away", async () => {
+    fetchEarthquakesMock.mockResolvedValue(RESPONSE);
+    renderScreen();
+
+    // Both open by default. Readers reported hardly noticing the assistant
+    // when it was a closed row inside the panel it revealed.
+    expect(
+      await screen.findByRole("table", { name: "Recent earthquakes" }),
+    ).toBeTruthy();
+    expect(await screen.findByTestId("assistant")).toBeTruthy();
+  });
+
+  it("switches the left panel between the data and administration", async () => {
+    fetchEarthquakesMock.mockResolvedValue(RESPONSE);
+    renderScreen();
+
+    await screen.findByRole("table", { name: "Recent earthquakes" });
+    fireEvent.click(screen.getByRole("button", { name: "Admin" }));
+
+    expect(
+      await screen.findByRole("button", { name: /Fetch latest from USGS/ }),
+    ).toBeTruthy();
+    // One view at a time on the left, so neither can crush the other.
+    expect(
+      screen.queryByRole("table", { name: "Recent earthquakes" }),
+    ).toBeNull();
+    // The assistant is unaffected: each panel owns its own edge.
+    expect(screen.getByTestId("assistant")).toBeTruthy();
   });
 });
 
@@ -226,9 +315,11 @@ describe("HomeScreen", () => {
     fetchEarthquakesMock.mockResolvedValue(RESPONSE);
     renderScreen();
 
-    const divider = await screen.findByRole("separator");
-    expect(divider.getAttribute("aria-valuenow")).toBeTruthy();
-    expect(divider.getAttribute("tabindex")).toBe("0");
+    // Three panes, so two dividers. Either is enough to prove the splitter is
+    // operable without a pointer.
+    const [divider] = await screen.findAllByRole("separator");
+    expect(divider?.getAttribute("aria-valuenow")).toBeTruthy();
+    expect(divider?.getAttribute("tabindex")).toBe("0");
   });
 
   it("renders on a globe, so the Pacific is not split by a projection edge", () => {

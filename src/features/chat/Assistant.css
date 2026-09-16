@@ -1,0 +1,25 @@
+/* The composer is one surface holding the question and its controls, rather
+   than a field with a button parked beside it. A separate button took width
+   from the text, sat at a different height from a box that grows, and read as
+   a search control rather than the primary action of the feature. */
+.lytir-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid
+    light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  border-radius: var(--mantine-radius-md);
+  background: light-dark(
+    var(--mantine-color-white),
+    var(--mantine-color-dark-6)
+  );
+  transition: border-color 120ms ease;
+}
+
+/* The ring belongs to the whole surface, because the focusable element inside
+   it is borderless and would otherwise show focus in the middle of a box. */
+.lytir-composer:focus-within {
+  border-color: var(--mantine-primary-color-filled);
+  outline: 1px solid var(--mantine-primary-color-filled);
+}

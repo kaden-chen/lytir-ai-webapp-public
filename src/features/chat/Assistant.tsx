@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ActionIcon,
   Alert,
   Box,
   Button,
@@ -9,6 +10,7 @@ import {
   Text,
   Textarea,
 } from "@mantine/core";
+import "@/features/chat/Assistant.css";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AnswerCard } from "@/features/chat/AnswerCard";
 import type { AiQaResponse } from "@/features/chat/askQuestion";
@@ -34,7 +36,17 @@ interface Exchange {
   response: AiQaResponse;
 }
 
-export function Assistant() {
+interface AssistantProps {
+  /**
+   * Set on a narrow viewport, where vertical space is the scarce resource.
+   * The composer starts at a single row and is capped lower, so an empty box
+   * takes no height it has not earned and a growing one cannot swallow the
+   * answer being read.
+   */
+  compact?: boolean;
+}
+
+export function Assistant({ compact = false }: AssistantProps = {}) {
   const [exchanges, setExchanges] = useState<Exchange[]>([]);
   const [draft, setDraft] = useState("");
   const [tooLongToCombine, setTooLongToCombine] = useState(false);
@@ -108,12 +120,14 @@ export function Assistant() {
   const overLimit = draft.trim().length > MAX_QUESTION_CHARACTERS;
 
   return (
-    // Sized by its content, so an empty assistant is a title, a line of help,
-    // three prompts and a box — not a tall blank reserve. The transcript is
-    // what is capped, so it scrolls once it has grown and the question box
-    // stays directly beneath it either way.
-    <Stack gap="sm" p="sm">
-      <Box style={{ maxHeight: "min(42vh, 420px)", overflowY: "auto" }}>
+    // Fills the panel it owns, rather than being sized by its content. The
+    // transcript takes the space and scrolls; the composer is pinned to the
+    // foot, which is where a reader looks for it and where it stays as
+    // answers accumulate. In the previous layout this was a section stacked
+    // among others, so it capped its transcript instead — in a panel of its
+    // own that cap would leave the question box floating in the middle.
+    <Stack gap="sm" p="sm" style={{ flex: 1, minHeight: 0 }}>
+      <Box style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
         <Stack gap="md" aria-live="polite">
           {exchanges.length === 0 && !ask.isPending && inputFocused ? (
             <Stack gap={6}>
@@ -185,78 +199,96 @@ export function Assistant() {
         </Stack>
       </Box>
 
-      <Stack gap={6}>
-        {/* One line that grows, with the action beside it rather than below.
-            A two-row box and a small button underneath made the primary
-            action of the feature look like an afterthought. */}
-        <Group gap="xs" align="flex-end" wrap="nowrap">
-          <Textarea
-            // Labelled for assistive technology but not visibly: the section
-            // heading and the placeholder already say what this is, and a
-            // third label only costs height.
-            aria-label={
-              replyingToClarification ? "Your reply" : "Ask about earthquakes"
-            }
-            description={
-              replyingToClarification
-                ? "Sent together with your original question."
-                : undefined
-            }
-            placeholder={
-              replyingToClarification
-                ? "Your reply…"
-                : "Ask about recent earthquakes…"
-            }
-            autosize
-            minRows={1}
-            maxRows={4}
-            style={{ flex: 1 }}
-            value={draft}
-            error={
-              overLimit
-                ? `Questions are limited to ${MAX_QUESTION_CHARACTERS} characters.`
-                : undefined
-            }
-            onFocus={() => setInputFocused(true)}
-            onBlur={() => setInputFocused(false)}
-            onChange={(event) => setDraft(event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-          />
-          <Button
-            onClick={submit}
-            loading={ask.isPending}
-            disabled={!draft.trim() || overLimit}
-          >
-            Ask
-          </Button>
-        </Group>
-        <Group justify="space-between" gap="xs" mih={22}>
-          {/* Shown while typing rather than permanently. A keyboard hint is
-              worth one line when it is about to be used and is clutter the
-              rest of the time. */}
-          <Text fz="xs" c="dimmed">
-            {inputFocused ? "Enter to ask · Shift+Enter for a new line" : ""}
+      {/* Pinned: the transcript above takes the leftover height, so this never
+          moves as answers arrive. One surface holds the question and its
+          controls, so the text keeps the full width and the action sits where
+          a reader's eye ends rather than beside a box that changes height. */}
+      <Box className="lytir-composer" style={{ flex: "0 0 auto" }}>
+        {replyingToClarification ? (
+          <Text size="xs" c="dimmed" px={4}>
+            Sent together with your original question.
           </Text>
-          {exchanges.length > 0 ? (
-            <Button
-              variant="subtle"
-              size="compact-xs"
-              onClick={() => {
-                setExchanges([]);
-                setTooLongToCombine(false);
-                ask.reset();
-              }}
+        ) : null}
+        <Textarea
+          variant="unstyled"
+          styles={{ input: { padding: "2px 6px" } }}
+          // Labelled for assistive technology but not visibly: the section
+          // heading and the placeholder already say what this is, and a third
+          // label only costs height.
+          aria-label={
+            replyingToClarification ? "Your reply" : "Ask about earthquakes"
+          }
+          placeholder={
+            replyingToClarification
+              ? "Your reply…"
+              : "Ask about recent earthquakes…"
+          }
+          autosize
+          minRows={compact ? 1 : 3}
+          maxRows={compact ? 4 : 8}
+          value={draft}
+          onFocus={() => setInputFocused(true)}
+          onBlur={() => setInputFocused(false)}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+        />
+        {/* The footer of the same surface: what the keyboard does on the left,
+            the actions on the right. The limit takes the hint's place rather
+            than adding a line, so the composer never changes height to scold
+            anyone. */}
+        <Group justify="space-between" gap="xs" wrap="nowrap" px={4} mih={30}>
+          <Text fz="xs" c={overLimit ? "red" : "dimmed"} lineClamp={1}>
+            {overLimit
+              ? `Questions are limited to ${MAX_QUESTION_CHARACTERS} characters.`
+              : inputFocused
+                ? "Enter to ask · Shift+Enter for a new line"
+                : ""}
+          </Text>
+          <Group gap={6} wrap="nowrap">
+            {exchanges.length > 0 ? (
+              <Button
+                variant="subtle"
+                size="compact-xs"
+                onClick={() => {
+                  setExchanges([]);
+                  setTooLongToCombine(false);
+                  ask.reset();
+                }}
+              >
+                Start fresh
+              </Button>
+            ) : null}
+            <ActionIcon
+              radius="xl"
+              size="lg"
+              aria-label="Ask"
+              onClick={submit}
+              loading={ask.isPending}
+              disabled={!draft.trim() || overLimit}
             >
-              Start fresh
-            </Button>
-          ) : null}
+              {/* Inline, like the other glyphs in this application. */}
+              <svg
+                aria-hidden
+                viewBox="0 0 24 24"
+                width={18}
+                height={18}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </ActionIcon>
+          </Group>
         </Group>
-      </Stack>
+      </Box>
     </Stack>
   );
 }

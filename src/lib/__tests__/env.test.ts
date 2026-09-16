@@ -12,6 +12,7 @@ const complete = {
   VITE_API_DIAG_URL: "https://edge.test/api/diag",
   VITE_API_EARTHQUAKES_URL: "https://edge.test/api/proxy/earthquakes",
   VITE_API_AI_QA_URL: "https://edge.test/api/proxy/ai-qa",
+  VITE_API_ADMIN_SYNC_DATA_URL: "https://edge.test/api/proxy/admin/sync-data",
 } as const;
 
 describe("findMissingEnv", () => {
@@ -31,6 +32,7 @@ describe("findMissingEnv", () => {
       "VITE_API_DIAG_URL",
       "VITE_API_EARTHQUAKES_URL",
       "VITE_API_AI_QA_URL",
+      "VITE_API_ADMIN_SYNC_DATA_URL",
     ]);
   });
 
