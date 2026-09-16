@@ -48,6 +48,11 @@ export interface EarthquakesResponse {
   utc_now: string;
 }
 
+// Exported rather than written inline at the one call site, because the
+// administrator refresh has to invalidate exactly this query once a run
+// finishes, and two copies of a key string drift apart without failing.
+export const EARTHQUAKES_QUERY_KEY = ["earthquakes"] as const;
+
 // The service requires an explicit offset or `Z` on each instant and rejects a
 // naive one, and it rejects a window longer than its configured maximum of 720
 // hours, so both are the caller's responsibility rather than clamped here.

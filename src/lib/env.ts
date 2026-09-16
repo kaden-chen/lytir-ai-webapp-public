@@ -9,6 +9,7 @@ const REQUIRED_KEYS = [
   "VITE_API_DIAG_URL",
   "VITE_API_EARTHQUAKES_URL",
   "VITE_API_AI_QA_URL",
+  "VITE_API_ADMIN_SYNC_DATA_URL",
 ] as const;
 
 type RequiredKey = (typeof REQUIRED_KEYS)[number];
@@ -37,6 +38,7 @@ export const env = {
     diag: import.meta.env.VITE_API_DIAG_URL,
     earthquakes: import.meta.env.VITE_API_EARTHQUAKES_URL,
     aiQa: import.meta.env.VITE_API_AI_QA_URL,
+    adminSyncData: import.meta.env.VITE_API_ADMIN_SYNC_DATA_URL,
   },
 } as const;
 

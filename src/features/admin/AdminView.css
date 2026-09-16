@@ -1,0 +1,14 @@
+/* The response is output, so it reads as output: its own recessed surface,
+   a step darker than the panel it sits on, filling the height left under the
+   controls and scrolling inside itself rather than ending in a ragged edge
+   part-way down an empty panel. */
+.lytir-evidence {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  background: light-dark(
+    var(--mantine-color-gray-2),
+    var(--mantine-color-dark-8)
+  );
+}
