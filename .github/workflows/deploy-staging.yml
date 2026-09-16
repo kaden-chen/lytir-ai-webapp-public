@@ -1,33 +1,10 @@
 name: Deploy Lytir AI Web App [Staging]
 
-# Triggered by a push to dev. A pull_request trigger cannot be used: the
-# deploy action always treats a pull_request event as a preview environment
-# named after the PR number, so production would never receive the build.
-#
-# Branch protection is unavailable on this plan (private repository on GitHub
-# Free), so the first job step asks the API whether the pushed commit came
-# from a pull request merged into dev, and refuses to deploy when it did not.
-# workflow_dispatch bypasses that check deliberately, as a manual escape hatch.
-on:
-  push:
-    branches: [dev]
-    paths-ignore:
-      - "**.md"
-      - ".agents/**"
-      - ".vscode/**"
-      - "docs/**"
-      - ".env.example"
-      - ".gitignore"
-      - ".markdownlint-cli2.yaml"
-      - ".prettierignore"
-      - ".prettierrc.json"
-      - "eslint.config.js"
-      - "LICENSE"
-  workflow_dispatch:
+# Staging deployments are initiated manually from GitHub Actions.
+on: workflow_dispatch
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: deploy-staging
@@ -39,23 +16,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     steps:
-      - name: Require a pull request merged into dev
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
-        run: |
-          merged=$(gh api "repos/$REPO/commits/$SHA/pulls" \
-            --jq "[.[] | select(.merged_at != null and .base.ref == \"dev\" and .merge_commit_sha == \"$SHA\")] | length")
-          if [ "$merged" -eq 0 ]; then
-            echo "✗ $SHA did not arrive through a pull request merged into dev." >&2
-            echo "  Refusing to deploy unreviewed code. Open a pull request instead," >&2
-            echo "  or run this workflow manually if the push was intentional." >&2
-            exit 1
-          fi
-          echo "✓ Commit came from a merged pull request; continuing."
-
       - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v7
@@ -92,6 +52,7 @@ jobs:
           VITE_API_DIAG_URL: ${{ vars.VITE_API_DIAG_URL }}
           VITE_API_EARTHQUAKES_URL: ${{ vars.VITE_API_EARTHQUAKES_URL }}
           VITE_API_AI_QA_URL: ${{ vars.VITE_API_AI_QA_URL }}
+          VITE_API_ADMIN_SYNC_DATA_URL: ${{ vars.VITE_API_ADMIN_SYNC_DATA_URL }}
         run: |
           # A missing Firebase value builds an application that looks fine and
           # silently cannot sign anyone in; a missing basemap style builds one
@@ -101,7 +62,8 @@ jobs:
             VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID \
             VITE_FIREBASE_APP_ID VITE_MAP_STYLE_LIGHT \
             VITE_MAP_STYLE_DARK VITE_API_DIAG_URL \
-            VITE_API_EARTHQUAKES_URL VITE_API_AI_QA_URL; do
+            VITE_API_EARTHQUAKES_URL VITE_API_AI_QA_URL \
+            VITE_API_ADMIN_SYNC_DATA_URL; do
             if [ -z "${!name}" ]; then
               missing="$missing $name"
             fi
@@ -126,6 +88,7 @@ jobs:
           VITE_API_DIAG_URL: ${{ vars.VITE_API_DIAG_URL }}
           VITE_API_EARTHQUAKES_URL: ${{ vars.VITE_API_EARTHQUAKES_URL }}
           VITE_API_AI_QA_URL: ${{ vars.VITE_API_AI_QA_URL }}
+          VITE_API_ADMIN_SYNC_DATA_URL: ${{ vars.VITE_API_ADMIN_SYNC_DATA_URL }}
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1

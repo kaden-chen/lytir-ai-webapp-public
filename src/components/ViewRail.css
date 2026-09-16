@@ -1,0 +1,61 @@
+/* The activity bar: a fixed strip of icon buttons on the outer edge, holding
+   the only control that opens the panels. It carries one structural line
+   against the panel beside it, and nothing else — an edge of filled buttons
+   would read as a toolbar competing with the data. */
+.lytir-rail {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 48px;
+  width: 48px;
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-7)
+  );
+  border-right: 1px solid
+    light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+}
+
+/* Square, quiet, and dimmed until it is the selected view. The active mark is
+   the bar down the leading edge as well as the colour, so the state does not
+   depend on hue alone. */
+.lytir-rail-button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: light-dark(var(--mantine-color-gray-6), var(--mantine-color-dark-2));
+  background: transparent;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.lytir-rail-button:hover {
+  color: light-dark(var(--mantine-color-gray-9), var(--mantine-color-gray-0));
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-6)
+  );
+}
+
+.lytir-rail-button[aria-pressed="true"] {
+  color: light-dark(var(--mantine-color-gray-9), var(--mantine-color-gray-0));
+}
+
+.lytir-rail-button[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--mantine-primary-color-filled);
+}
+
+/* Keyboard focus only, and inset so the ring is not clipped by the strip. */
+.lytir-rail-button:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -2px;
+}

@@ -34,6 +34,8 @@ export default defineConfig({
       VITE_API_DIAG_URL: "https://example.test/api/diag",
       VITE_API_EARTHQUAKES_URL: "https://example.test/api/proxy/earthquakes",
       VITE_API_AI_QA_URL: "https://example.test/api/proxy/ai-qa",
+      VITE_API_ADMIN_SYNC_DATA_URL:
+        "https://example.test/api/proxy/admin/sync-data",
     },
   },
 });
