@@ -1,0 +1,162 @@
+.lytir-daynav {
+  flex: 0 0 auto;
+  border-top: 1px solid
+    light-dark(var(--mantine-color-gray-3), var(--mantine-color-dark-4));
+  background: light-dark(
+    var(--mantine-color-gray-0),
+    var(--mantine-color-dark-7)
+  );
+}
+
+.lytir-daynav-controls {
+  align-items: center;
+}
+
+.lytir-daynav-control,
+.lytir-daynav-status {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+}
+
+.lytir-daynav-date-wrap {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 180px;
+}
+
+.lytir-daynav-date {
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+}
+
+.lytir-daynav-date .mantine-Button-label,
+.lytir-daynav-date-label,
+.lytir-daynav-date-value {
+  min-width: 0;
+}
+
+.lytir-daynav-date-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lytir-daynav-date-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lytir-daynav-date-zone {
+  flex: 0 0 auto;
+}
+
+.lytir-daynav-calendar {
+  max-width: calc(100vw - 2 * var(--mantine-spacing-md));
+}
+
+@media (pointer: coarse) {
+  .lytir-daynav-control,
+  .lytir-daynav-status,
+  .lytir-daynav-date {
+    height: 44px;
+    min-height: 44px;
+  }
+
+  .lytir-daynav-control,
+  .lytir-daynav-status {
+    width: 44px;
+    min-width: 44px;
+  }
+}
+
+.lytir-daynav-follow,
+.lytir-daynav-status {
+  margin-left: auto;
+  border-radius: 50%;
+}
+
+.lytir-daynav-follow {
+  --lytir-daynav-reminder: #ff9933;
+
+  border-color: color-mix(
+    in srgb,
+    var(--lytir-daynav-reminder) 70%,
+    transparent
+  );
+  background: color-mix(in srgb, var(--lytir-daynav-reminder) 10%, transparent);
+  color: light-dark(
+    var(--mantine-color-orange-8),
+    var(--mantine-color-orange-4)
+  );
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--lytir-daynav-reminder) 20%, transparent),
+    0 0 10px color-mix(in srgb, var(--lytir-daynav-reminder) 16%, transparent);
+  transition:
+    border-color 120ms ease,
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+@media (hover: hover) {
+  .lytir-daynav-follow:hover {
+    border-color: var(--lytir-daynav-reminder);
+    background: color-mix(
+      in srgb,
+      var(--lytir-daynav-reminder) 16%,
+      transparent
+    );
+    box-shadow:
+      0 0 0 3px
+        color-mix(in srgb, var(--lytir-daynav-reminder) 26%, transparent),
+      0 0 12px color-mix(in srgb, var(--lytir-daynav-reminder) 22%, transparent);
+  }
+}
+
+.lytir-daynav-follow:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 3px;
+}
+
+.lytir-daynav-status {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid
+    color-mix(in srgb, var(--mantine-primary-color-filled) 65%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--mantine-primary-color-filled) 24%,
+    transparent
+  );
+  color: var(--mantine-primary-color-filled);
+  box-shadow:
+    0 0 0 3px
+      color-mix(in srgb, var(--mantine-primary-color-filled) 26%, transparent),
+    0 0 12px
+      color-mix(in srgb, var(--mantine-primary-color-filled) 20%, transparent);
+}
+
+.lytir-daynav-check {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--mantine-primary-color-filled);
+  color: light-dark(var(--mantine-color-white), var(--mantine-color-black));
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px
+    light-dark(var(--mantine-color-gray-0), var(--mantine-color-dark-7));
+}

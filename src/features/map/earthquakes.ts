@@ -8,10 +8,22 @@ import { env } from "@/lib/env";
 // render as unknown rather than as zero.
 export interface EarthquakeItem {
   /**
-   * The selected Cosmos document UUID, not the logical earthquake identity.
-   * The backend reselects a winner among duplicate ingestions, so this value
-   * can change for the same earthquake between requests. Safe for keying a
-   * render; unsafe for anything that must stay addressable, such as a URL.
+   * The Cosmos document UUID, which the backend has confirmed is the formal
+   * public identifier and the lookup key for the exact-record endpoint.
+   *
+   * It addresses one immutable stored record. Winner selection among duplicate
+   * ingestions neither deletes nor rewrites the others, so a URL naming this
+   * value keeps resolving for as long as the record is inside its retention
+   * lifecycle — a later 404 would be a retention matter, not a broken
+   * identifier. An earlier comment here claimed such a link would decay; that
+   * was wrong, and `rubicon-sasgeo/lytir-ai#34` settles it.
+   *
+   * What it is not is a *logical earthquake* identity. A later query may
+   * select a different duplicate, which is a different record with a different
+   * UUID, so the same earthquake can arrive under a different value between
+   * requests. Safe to address a record with; unsafe as a durable handle for an
+   * event, which is why a selection surviving a refetch, or a read or
+   * dismissed marker, cannot be built on it.
    */
   id: string;
   event_type: string;
