@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "start": "serve -s dist -l 5173",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -29,7 +30,8 @@
     "react-map-gl": "8.1.3",
     "react-markdown": "10.1.0",
     "react-router": "8.3.1",
-    "remark-gfm": "4.0.1"
+    "remark-gfm": "4.0.1",
+    "serve": "^14.2.6"
   },
   "devDependencies": {
     "@testing-library/react": "16.3.3",
