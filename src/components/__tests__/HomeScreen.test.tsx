@@ -1,9 +1,20 @@
 import type { ReactNode } from "react";
 import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EarthquakesResponse } from "@/features/map/earthquakes";
+import type {
+  EarthquakeQuery,
+  EarthquakesResponse,
+} from "@/features/map/earthquakes";
+import type { DiagResponse } from "@/lib/diag";
 
 // jsdom has no WebGL context, so the map itself is replaced by marker elements.
 // What is worth asserting here is which style URL the page asks for, that the
@@ -92,8 +103,10 @@ vi.mock("react-map-gl/maplibre", () => ({
   Layer: ({ id }: { id: string }) => <div data-testid="layer" data-id={id} />,
 }));
 
-const { fetchEarthquakesMock } = vi.hoisted(() => ({
-  fetchEarthquakesMock: vi.fn<() => Promise<EarthquakesResponse>>(),
+const { fetchEarthquakesMock, fetchDiagMock } = vi.hoisted(() => ({
+  fetchEarthquakesMock:
+    vi.fn<(query?: EarthquakeQuery) => Promise<EarthquakesResponse>>(),
+  fetchDiagMock: vi.fn<() => Promise<DiagResponse>>(),
 }));
 
 vi.mock("@/features/map/earthquakes", async () => {
@@ -101,6 +114,12 @@ vi.mock("@/features/map/earthquakes", async () => {
     typeof import("@/features/map/earthquakes")
   >("@/features/map/earthquakes");
   return { ...actual, fetchEarthquakes: fetchEarthquakesMock };
+});
+
+vi.mock("@/lib/diag", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/lib/diag")>("@/lib/diag");
+  return { ...actual, fetchDiag: fetchDiagMock };
 });
 
 // Stands in for the lazily loaded assistant, so these tests stay about the
@@ -135,23 +154,50 @@ const RESPONSE: EarthquakesResponse = {
   utc_now: "2026-09-13T03:41:26.436274+00:00",
 };
 
-function renderScreen(colorScheme: "light" | "dark" = "light") {
+const DIAG: DiagResponse = {
+  utc_now: "2026-09-17T15:20:20.763376+00:00",
+  dataset_info: {
+    time_range: {
+      start_utc: "2026-09-11T17:00:00+00:00",
+      end_utc: "2026-09-17T15:20:20.763376+00:00",
+    },
+    query_constraints: { max_window_hours: 720 },
+  },
+};
+
+function LocationProbe() {
+  const location = useLocation();
+
+  return <div data-testid="location">{location.search}</div>;
+}
+
+function renderScreen(
+  colorScheme: "light" | "dark" = "light",
+  initialEntry = "/",
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
 
-  return render(
-    <MantineProvider forceColorScheme={colorScheme}>
-      <QueryClientProvider client={client}>
-        <HomeScreen />
-      </QueryClientProvider>
-    </MantineProvider>,
-  );
+  return {
+    client,
+    ...render(
+      <MantineProvider forceColorScheme={colorScheme}>
+        <QueryClientProvider client={client}>
+          <MemoryRouter initialEntries={[initialEntry]}>
+            <HomeScreen />
+            <LocationProbe />
+          </MemoryRouter>
+        </QueryClientProvider>
+      </MantineProvider>,
+    ),
+  };
 }
 
 // Which sections are open is remembered, so it has to be reset between tests.
 beforeEach(() => {
   localStorage.clear();
+  fetchDiagMock.mockResolvedValue(DIAG);
 });
 
 // The global stub reports every media query as unmatched, so the tests above
@@ -532,5 +578,450 @@ describe("HomeScreen", () => {
 
     expect(await screen.findByText(/Could not load earthquakes/)).toBeTruthy();
     expect(await screen.findByText(/abc-123/)).toBeTruthy();
+  });
+});
+
+describe("day navigation", () => {
+  beforeEach(() => {
+    fetchEarthquakesMock.mockReset();
+    fetchDiagMock.mockClear();
+    fetchDiagMock.mockResolvedValue(DIAG);
+    fetchEarthquakesMock.mockResolvedValue(RESPONSE);
+  });
+
+  it("sends no time parameters while following latest and shows the status", async () => {
+    renderScreen();
+
+    const status = await screen.findByRole("status", {
+      name: "Following latest. Results update automatically.",
+    });
+    expect(status).toBeTruthy();
+    expect(status.querySelector(".lytir-daynav-check")?.textContent).toBe("✓");
+    expect(fetchEarthquakesMock).toHaveBeenCalledWith({});
+    expect(fetchEarthquakesMock.mock.calls[0]?.[0]).not.toHaveProperty(
+      "startTime",
+    );
+    const dateButton = screen.getByRole("button", {
+      name: /^Choose a UTC date/,
+    });
+    expect(dateButton.querySelector("svg")).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(dateButton.textContent).toContain("UTC");
+    });
+    await vi.waitFor(() => {
+      expect(screen.getByText("Sep 17, 2026")).toBeTruthy();
+    });
+    expect(screen.queryByText(/▾/)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Next day" }).getAttribute("disabled"),
+    ).not.toBeNull();
+  });
+
+  it("requests explicit UTC boundaries for a URL-selected day", async () => {
+    renderScreen("light", "/?date=2026-09-16");
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-16T00:00:00.000Z",
+        endTime: "2026-09-17T00:00:00.000Z",
+      });
+    });
+    const dateButton = screen.getByRole("button", {
+      name: "Choose a UTC date. Selected Sep 16, 2026",
+    });
+    expect(dateButton.textContent).toContain("UTC");
+    expect(screen.getByText("Sep 16, 2026")).toBeTruthy();
+    const follow = screen.getByRole("button", { name: "Follow latest" });
+    expect(follow).toBeTruthy();
+    expect(follow.querySelector(".lytir-daynav-check")).toBeNull();
+  });
+
+  it("moves to the previous UTC date from latest", async () => {
+    renderScreen();
+
+    await screen.findByRole("status", {
+      name: "Following latest. Results update automatically.",
+    });
+    await vi.waitFor(() => {
+      expect(
+        screen
+          .getByRole("button", { name: "Previous day" })
+          .getAttribute("disabled"),
+      ).toBeNull();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Previous day" }));
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-16T00:00:00.000Z",
+        endTime: "2026-09-17T00:00:00.000Z",
+      });
+    });
+  });
+
+  it("moves by one UTC date with next and returns with Follow latest", async () => {
+    renderScreen("light", "/?date=2026-09-15");
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-15T00:00:00.000Z",
+        endTime: "2026-09-16T00:00:00.000Z",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Next day" }));
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-16T00:00:00.000Z",
+        endTime: "2026-09-17T00:00:00.000Z",
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Follow latest" }));
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock.mock.calls.at(-1)?.[0]).toEqual({});
+    });
+    expect(
+      await screen.findByRole("status", {
+        name: "Following latest. Results update automatically.",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("keeps Next day disabled on the current UTC date", async () => {
+    renderScreen("light", "/?date=2026-09-17");
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-17T00:00:00.000Z",
+        endTime: "2026-09-17T15:20:20.763Z",
+      });
+    });
+    expect(
+      screen.getByRole("button", { name: "Next day" }).getAttribute("disabled"),
+    ).not.toBeNull();
+  });
+
+  it("commits a date chosen in the calendar", async () => {
+    renderScreen();
+
+    await screen.findByRole("status", {
+      name: "Following latest. Results update automatically.",
+    });
+    await vi.waitFor(() => {
+      expect(
+        screen
+          .getByRole("button", { name: "Previous day" })
+          .getAttribute("disabled"),
+      ).toBeNull();
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Choose a UTC date. Current Sep 17, 2026",
+      }),
+    );
+
+    await screen.findByLabelText("Choose a UTC date");
+    expect(screen.getByText("September 2026")).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Sep 10, 2026 UTC", hidden: true })
+        .getAttribute("disabled"),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: "Sep 18, 2026 UTC", hidden: true })
+        .getAttribute("disabled"),
+    ).not.toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sep 15, 2026 UTC", hidden: true }),
+    );
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-15T00:00:00.000Z",
+        endTime: "2026-09-16T00:00:00.000Z",
+      });
+    });
+    await vi.waitFor(() => {
+      expect(screen.queryByLabelText("Choose a UTC date")).toBeNull();
+    });
+  });
+
+  it("falls back to latest and drops only a malformed date parameter", async () => {
+    renderScreen("light", "/?foo=keep&date=not-a-date");
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("?foo=keep");
+    });
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({});
+    });
+    expect(
+      await screen.findByRole("status", {
+        name: "Following latest. Results update automatically.",
+      }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Follow latest" })).toBeNull();
+  });
+
+  it("keeps a valid deep-linked date while diagnostics are pending", async () => {
+    let resolveDiag: (diag: DiagResponse) => void = () => {};
+    fetchDiagMock.mockReturnValue(
+      new Promise<DiagResponse>((resolve) => {
+        resolveDiag = resolve;
+      }),
+    );
+    renderScreen("light", "/?date=2026-09-15");
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({});
+    });
+    expect(screen.getByTestId("location").textContent).toBe("?date=2026-09-15");
+
+    await act(async () => {
+      resolveDiag(DIAG);
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-15T00:00:00.000Z",
+        endTime: "2026-09-16T00:00:00.000Z",
+      });
+    });
+    expect(screen.getByTestId("location").textContent).toBe("?date=2026-09-15");
+  });
+
+  it("drops a valid date once an initial diagnostic failure settles", async () => {
+    fetchDiagMock.mockRejectedValue(new Error("unreachable"));
+    renderScreen("light", "/?date=2026-09-15");
+
+    await vi.waitFor(
+      () => {
+        expect(screen.getByTestId("location").textContent).toBe("");
+      },
+      { timeout: 5000 },
+    );
+    expect(
+      await screen.findByRole("status", {
+        name: "Following latest. Results update automatically.",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Day history is unavailable/)).toBeTruthy();
+  });
+
+  it("drops the date and disables historical controls when the maximum is under a day", async () => {
+    fetchDiagMock.mockResolvedValue({
+      ...DIAG,
+      dataset_info: {
+        ...DIAG.dataset_info,
+        query_constraints: { max_window_hours: 12 },
+      },
+    });
+    renderScreen("light", "/?date=2026-09-15");
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("location").textContent).toBe("");
+    });
+    expect(
+      await screen.findByRole("status", {
+        name: "Following latest. Results update automatically.",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Day history is unavailable/)).toBeTruthy();
+    expect(
+      screen
+        .getByRole("button", { name: "Previous day" })
+        .getAttribute("disabled"),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("button", { name: /^Choose a UTC date/ })
+        .getAttribute("disabled"),
+    ).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Next day" }).getAttribute("disabled"),
+    ).not.toBeNull();
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({});
+    });
+  });
+
+  it("polls while following latest but not on a selected day", async () => {
+    vi.useFakeTimers();
+    try {
+      renderScreen();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(fetchEarthquakesMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(fetchEarthquakesMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    cleanup();
+    fetchEarthquakesMock.mockClear();
+    vi.useFakeTimers();
+    try {
+      renderScreen("light", "/?date=2026-09-15");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(120_000);
+      });
+      const dayCalls = fetchEarthquakesMock.mock.calls.filter(
+        ([query]) => query?.startTime === "2026-09-15T00:00:00.000Z",
+      );
+      expect(dayCalls).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the footer through loading, empty, and error states", async () => {
+    fetchEarthquakesMock.mockReturnValue(new Promise(() => {}));
+    renderScreen();
+    expect(
+      await screen.findByRole("status", {
+        name: "Following latest. Results update automatically.",
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Loading earthquakes/)).toBeTruthy();
+
+    cleanup();
+    fetchEarthquakesMock.mockResolvedValue({
+      ...RESPONSE,
+      items: [],
+      count: 0,
+    });
+    renderScreen("light", "/?date=2026-09-15");
+    expect(
+      await screen.findByRole("button", { name: "Follow latest" }),
+    ).toBeTruthy();
+    expect(await screen.findByText(/No earthquakes reported/)).toBeTruthy();
+
+    cleanup();
+    const { ApiError } = await import("@/lib/api");
+    fetchEarthquakesMock.mockRejectedValue(
+      new ApiError("Request failed with status 503", { status: 503 }),
+    );
+    renderScreen();
+    expect(await screen.findByText(/Could not load earthquakes/)).toBeTruthy();
+    expect(
+      screen.getByRole("status", {
+        name: "Following latest. Results update automatically.",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("returns to latest when a diagnostic update invalidates the date", async () => {
+    const { client } = renderScreen("light", "/?date=2026-09-11");
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-11T17:00:00.000Z",
+        endTime: "2026-09-12T00:00:00.000Z",
+      });
+    });
+
+    fetchDiagMock.mockResolvedValue({
+      ...DIAG,
+      dataset_info: {
+        ...DIAG.dataset_info,
+        time_range: {
+          ...DIAG.dataset_info?.time_range,
+          start_utc: "2026-09-13T00:00:00+00:00",
+        },
+      },
+    });
+
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["diag"] });
+    });
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock.mock.calls.at(-1)?.[0]).toEqual({});
+    });
+    expect(
+      await screen.findByRole("status", {
+        name: "Following latest. Results update automatically.",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("reconciles once against diagnostics when a day request is rejected", async () => {
+    const { ApiError } = await import("@/lib/api");
+    fetchEarthquakesMock.mockImplementation((query?: EarthquakeQuery) =>
+      query?.startTime
+        ? Promise.reject(
+            new ApiError("Request failed with status 400", { status: 400 }),
+          )
+        : Promise.resolve(RESPONSE),
+    );
+    renderScreen("light", "/?date=2026-09-15");
+
+    expect(await screen.findByText(/Could not load earthquakes/)).toBeTruthy();
+    await vi.waitFor(() => {
+      expect(fetchDiagMock.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    const dayCalls = fetchEarthquakesMock.mock.calls.filter(
+      ([query]) => query?.startTime !== undefined,
+    );
+    expect(dayCalls).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Follow latest" })).toBeTruthy();
+  });
+
+  it("treats a same-date later dataset start as a new request, but not an advancing clock", async () => {
+    const { client } = renderScreen("light", "/?date=2026-09-17");
+
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-17T00:00:00.000Z",
+        endTime: "2026-09-17T15:20:20.763Z",
+      });
+    });
+    fetchEarthquakesMock.mockClear();
+
+    fetchDiagMock.mockResolvedValue({
+      ...DIAG,
+      utc_now: "2026-09-17T16:30:00+00:00",
+    });
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["diag"] });
+    });
+    expect(fetchEarthquakesMock).not.toHaveBeenCalled();
+
+    fetchDiagMock.mockResolvedValue({
+      ...DIAG,
+      utc_now: "2026-09-17T16:30:00+00:00",
+      dataset_info: {
+        ...DIAG.dataset_info,
+        time_range: {
+          ...DIAG.dataset_info?.time_range,
+          start_utc: "2026-09-17T05:00:00+00:00",
+        },
+      },
+    });
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["diag"] });
+    });
+    await vi.waitFor(() => {
+      expect(fetchEarthquakesMock).toHaveBeenCalledWith({
+        startTime: "2026-09-17T05:00:00.000Z",
+        endTime: "2026-09-17T16:30:00.000Z",
+      });
+    });
+    expect(fetchEarthquakesMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -9,6 +9,11 @@ export interface DiagResponse {
   security?: {
     role?: string;
   };
+  utc_now?: string;
+  dataset_info?: {
+    time_range?: { start_utc?: string; end_utc?: string };
+    query_constraints?: { max_window_hours?: number | string };
+  };
 }
 
 // This lives in `lib` rather than in a feature because the role now decides
