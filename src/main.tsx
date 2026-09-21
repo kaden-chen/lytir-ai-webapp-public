@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { MantineProvider } from "@mantine/core";
 import "@mantine/core/styles.css";
+import "@mantine/dates/styles.css";
 // Self-hosted, and imported once here so the whole interface shares one font
 // request. The variable file covers every weight the theme asks for.
 import "@fontsource-variable/inter";

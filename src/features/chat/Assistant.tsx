@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -56,6 +56,10 @@ export function Assistant({ compact = false }: AssistantProps = {}) {
   // preset filters and, on a narrow viewport, wrapped to three lines and
   // pushed the question box towards the fold.
   const [inputFocused, setInputFocused] = useState(false);
+  const followNewContent = useRef(false);
+  const latestExchange = useRef<HTMLDivElement>(null);
+  const pendingResponse = useRef<HTMLDivElement>(null);
+  const failedResponse = useRef<HTMLDivElement>(null);
 
   const { data: diag } = useQuery({
     queryKey: DIAG_QUERY_KEY,
@@ -87,6 +91,24 @@ export function Assistant({ compact = false }: AssistantProps = {}) {
     return () => clearInterval(timer);
   }, [ask.isPending]);
 
+  useEffect(() => {
+    if (ask.isPending && followNewContent.current) {
+      pendingResponse.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [ask.isPending]);
+
+  useEffect(() => {
+    if (exchanges.length > 0 && followNewContent.current) {
+      latestExchange.current?.scrollIntoView({ block: "start" });
+    }
+  }, [exchanges.length]);
+
+  useEffect(() => {
+    if (ask.error && followNewContent.current) {
+      failedResponse.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [ask.error]);
+
   const last = exchanges.at(-1);
   const replyingToClarification =
     last?.response.outcome === "clarification_required";
@@ -114,6 +136,7 @@ export function Assistant({ compact = false }: AssistantProps = {}) {
     }
 
     setTooLongToCombine(false);
+    followNewContent.current = true;
     ask.mutate(sent);
   }
 
@@ -127,8 +150,20 @@ export function Assistant({ compact = false }: AssistantProps = {}) {
     // among others, so it capped its transcript instead — in a panel of its
     // own that cap would leave the question box floating in the middle.
     <Stack gap="sm" p="sm" style={{ flex: 1, minHeight: 0 }}>
-      <Box style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
-        <Stack gap="md" aria-live="polite">
+      <Box
+        role="log"
+        aria-live="polite"
+        style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+        onScroll={(event) => {
+          if (ask.isPending) {
+            const { clientHeight, scrollHeight, scrollTop } =
+              event.currentTarget;
+            followNewContent.current =
+              scrollHeight - scrollTop - clientHeight <= 24;
+          }
+        }}
+      >
+        <Stack gap="md">
           {exchanges.length === 0 && !ask.isPending && inputFocused ? (
             <Stack gap={6}>
               <Text size="xs" c="dimmed">
@@ -157,18 +192,22 @@ export function Assistant({ compact = false }: AssistantProps = {}) {
           ) : null}
 
           {exchanges.map((exchange, index) => (
-            <AnswerCard
+            <Box
               // The service returns no identifier, and two identical questions
               // are legitimate, so position is the only honest key.
               key={`${index}-${exchange.sent.length}`}
-              sent={exchange.sent}
-              response={exchange.response}
-              showDetail={isAdmin(diag)}
-            />
+              ref={index === exchanges.length - 1 ? latestExchange : undefined}
+            >
+              <AnswerCard
+                sent={exchange.sent}
+                response={exchange.response}
+                showDetail={isAdmin(diag)}
+              />
+            </Box>
           ))}
 
           {ask.isPending ? (
-            <Group gap="sm">
+            <Group ref={pendingResponse} gap="sm">
               <Loader size="sm" />
               <Text size="sm" c="dimmed">
                 Working on it… {elapsed}s. Questions that need earthquake data
@@ -178,7 +217,11 @@ export function Assistant({ compact = false }: AssistantProps = {}) {
           ) : null}
 
           {ask.error ? (
-            <Alert color="red" title="Could not get an answer">
+            <Alert
+              ref={failedResponse}
+              color="red"
+              title="Could not get an answer"
+            >
               <Text size="sm">{ask.error.message}</Text>
               {ask.error instanceof ApiError && ask.error.correlationId ? (
                 <Text size="xs" c="dimmed" mt="xs">

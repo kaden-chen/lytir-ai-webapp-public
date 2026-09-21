@@ -9,6 +9,8 @@ const { askQuestionMock, isAdminMock } = vi.hoisted(() => ({
   isAdminMock: vi.fn(() => false),
 }));
 
+const scrollIntoViewMock = vi.fn<(this: Element) => void>();
+
 vi.mock("@/features/chat/askQuestion", async () => {
   const actual = await vi.importActual<
     typeof import("@/features/chat/askQuestion")
@@ -60,6 +62,8 @@ function ask(question: string) {
 }
 
 beforeEach(() => {
+  scrollIntoViewMock.mockReset();
+  Element.prototype.scrollIntoView = scrollIntoViewMock;
   askQuestionMock.mockReset();
   isAdminMock.mockReturnValue(false);
 });
@@ -76,6 +80,63 @@ describe("Assistant", () => {
     expect(askQuestionMock.mock.calls[0]?.[0]).toBe(
       "Was there earthquakes in Hawaii today?",
     );
+  });
+
+  it("brings the pending state and completed answer into view", async () => {
+    let resolveAnswer: (response: AiQaResponse) => void = () => {};
+    askQuestionMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveAnswer = resolve;
+      }),
+    );
+    renderChat();
+
+    ask("anything");
+
+    await screen.findByText(/Working on it/);
+    expect(scrollIntoViewMock).toHaveBeenLastCalledWith({ block: "nearest" });
+    expect(scrollIntoViewMock.mock.instances.at(-1)?.textContent).toContain(
+      "Working on it",
+    );
+
+    resolveAnswer(answered());
+
+    await screen.findByText("Five earthquakes");
+    await vi.waitFor(() => {
+      expect(scrollIntoViewMock).toHaveBeenCalledTimes(2);
+    });
+    expect(scrollIntoViewMock).toHaveBeenLastCalledWith({ block: "start" });
+    expect(scrollIntoViewMock.mock.instances.at(-1)?.textContent).toContain(
+      "Five earthquakes",
+    );
+  });
+
+  it("does not pull the transcript down after the reader scrolls away", async () => {
+    let resolveAnswer: (response: AiQaResponse) => void = () => {};
+    askQuestionMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveAnswer = resolve;
+      }),
+    );
+    renderChat();
+    ask("anything");
+    await screen.findByText(/Working on it/);
+
+    const transcript = screen.getByRole("log");
+    Object.defineProperties(transcript, {
+      clientHeight: { configurable: true, value: 200 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, value: 100, writable: true },
+    });
+    fireEvent.scroll(transcript);
+    scrollIntoViewMock.mockClear();
+
+    resolveAnswer(answered());
+
+    await screen.findByText("Five earthquakes");
+    await vi.waitFor(() => {
+      expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    });
   });
 
   it("says the confidence is the model's own estimate", async () => {
@@ -180,6 +241,10 @@ describe("Assistant", () => {
 
     expect(await screen.findByText(/Could not get an answer/)).toBeTruthy();
     expect(await screen.findByText(/abc-123/)).toBeTruthy();
+    expect(scrollIntoViewMock).toHaveBeenLastCalledWith({ block: "nearest" });
+    expect(scrollIntoViewMock.mock.instances.at(-1)?.textContent).toContain(
+      "Could not get an answer",
+    );
   });
 
   it("clears the exchange when starting fresh", async () => {

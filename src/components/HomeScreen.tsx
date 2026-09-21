@@ -11,13 +11,15 @@ import { Alert, Box, Center, Loader, Splitter, Text } from "@mantine/core";
 import "@/components/HomeScreen.css";
 import type { UseSplitterReturnValue } from "@mantine/hooks";
 import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { MapRef } from "react-map-gl/maplibre";
+import { useSearchParams } from "react-router";
 import type { SectionTab } from "@/components/SectionTabs";
 import { SectionTabs } from "@/components/SectionTabs";
 import type { RailItem } from "@/components/ViewRail";
 import { ViewRail } from "@/components/ViewRail";
 import { AdminView } from "@/features/admin/AdminView";
+import { EarthquakeDayNavigation } from "@/features/map/EarthquakeDayNavigation";
 import { EarthquakeList } from "@/features/map/EarthquakeList";
 import { EarthquakeMap } from "@/features/map/EarthquakeMap";
 import type {
@@ -30,9 +32,16 @@ import {
   toFeatureCollection,
   toProperties,
 } from "@/features/map/earthquakes";
+import {
+  dayRequest,
+  formatUtcDate,
+  readDayAvailability,
+  shiftUtcDate,
+} from "@/features/map/dayNavigation";
 import { formatWindowLabel } from "@/features/map/format";
 import { EARTHQUAKE_CLUSTER_MAX_ZOOM } from "@/features/map/earthquakeLayers";
 import { ApiError } from "@/lib/api";
+import { DIAG_QUERY_KEY, fetchDiag } from "@/lib/diag";
 
 // Loaded the first time its section is opened, so the Markdown renderer it
 // needs is not downloaded by someone who only ever looks at the map.
@@ -116,9 +125,12 @@ export function HomeScreen() {
   });
   const mapRef = useRef<MapRef>(null);
   const splitterRef = useRef<UseSplitterReturnValue | null>(null);
-  // The selection is deliberately transient and never reaches the URL: the
-  // backend reselects the document UUID when a duplicate ingestion wins
-  // deduplication, so a shared link to one would eventually resolve to nothing.
+  // The selection is transient and does not reach the URL. Not because a link
+  // to it would decay — the backend has confirmed records are immutable, so a
+  // UUID keeps resolving within its retention lifecycle — but because nothing
+  // yet puts view state in the URL, and a refetch can return the same
+  // earthquake under a different record UUID, which would leave a restored
+  // selection matching nothing.
   const [selected, setSelected] = useState<SelectedEarthquake | null>(null);
 
   // Remembered, so someone who works with the assistant closed finds it
@@ -201,14 +213,87 @@ export function HomeScreen() {
     assistantMounted.current = true;
   }
 
-  // No time window is sent, so the service applies its own default and echoes
-  // what it used in `time_range`. Computing the window here would make the
-  // browser's clock the authority on what "recent" means, which it is not.
-  const { data, error, isPending } = useQuery({
-    queryKey: EARTHQUAKES_QUERY_KEY,
-    queryFn: () => fetchEarthquakes(),
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const { data: diag, isFetched: diagSettled } = useQuery({
+    queryKey: DIAG_QUERY_KEY,
+    queryFn: fetchDiag,
     refetchInterval: REFETCH_INTERVAL_MS,
+    refetchOnWindowFocus: true,
+    retry: 1,
   });
+
+  const availability = useMemo(() => readDayAvailability(diag), [diag]);
+  const dateParam = searchParams.get("date");
+  const request = dateParam ? dayRequest(dateParam, availability) : null;
+  const selectedDate = request ? dateParam : null;
+
+  useEffect(() => {
+    if (!dateParam) {
+      return;
+    }
+
+    const malformed = shiftUtcDate(dateParam, 0) === null;
+    const invalidated =
+      diagSettled && dayRequest(dateParam, availability) === null;
+
+    if (malformed || invalidated) {
+      setSearchParams(
+        (previous) => {
+          const next = new URLSearchParams(previous);
+          next.delete("date");
+          return next;
+        },
+        { replace: true },
+      );
+    }
+  }, [dateParam, availability, diagSettled, setSearchParams]);
+
+  // The latest view leaves the window to the service; a selected UTC day sends
+  // the explicit bounds derived above. Both paths label the answer from the
+  // response rather than claiming that the requested and answered windows match.
+  const { data, error, isPending } = useQuery({
+    queryKey:
+      selectedDate && request
+        ? [...EARTHQUAKES_QUERY_KEY, "day", selectedDate, request.startTime]
+        : [...EARTHQUAKES_QUERY_KEY, "latest"],
+    queryFn: () => fetchEarthquakes(request ?? {}),
+    refetchInterval: selectedDate ? false : REFETCH_INTERVAL_MS,
+    ...(selectedDate
+      ? {
+          retry: (count: number, failure: Error) =>
+            !(failure instanceof ApiError && failure.status === 400) &&
+            count < 3,
+        }
+      : {}),
+  });
+
+  const requestIdentity =
+    selectedDate && request ? `${selectedDate}:${request.startTime}` : null;
+  const reconciledRequest = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (requestIdentity === null) {
+      reconciledRequest.current = null;
+      return;
+    }
+
+    if (
+      error instanceof ApiError &&
+      error.status === 400 &&
+      reconciledRequest.current !== requestIdentity
+    ) {
+      reconciledRequest.current = requestIdentity;
+      void queryClient.invalidateQueries({ queryKey: DIAG_QUERY_KEY });
+    }
+  }, [requestIdentity, error, queryClient]);
+
+  const viewKey = requestIdentity ?? "latest";
+
+  useEffect(() => {
+    setSelected(null);
+  }, [viewKey]);
 
   // Memoised on the response rather than on a fresh `?? []`, so a re-render
   // does not rebuild the source data and discard MapLibre's hover state.
@@ -229,28 +314,69 @@ export function HomeScreen() {
     });
   }, []);
 
-  const earthquakes = error ? (
-    <Alert color="red" title="Could not load earthquakes" m="sm">
-      <Text size="sm">{error.message}</Text>
-      {error instanceof ApiError && error.correlationId ? (
-        <Text size="xs" c="dimmed" mt="xs">
-          Correlation ID: {error.correlationId}
-        </Text>
-      ) : null}
-    </Alert>
-  ) : isPending ? (
-    <Text size="sm" c="dimmed" p="sm">
-      Loading earthquakes…
-    </Text>
-  ) : (
-    <EarthquakeList
-      items={items}
-      onSelect={handleSelectFromList}
-      selectedId={selected?.properties.id ?? null}
-      // Read from the response rather than restated from the contract, so the
-      // label cannot disagree with the data above it.
-      windowLabel={formatWindowLabel(data?.time_range)}
-    />
+  const selectDate = useCallback(
+    (date: string) => {
+      setSearchParams((previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("date", date);
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
+
+  const followLatest = useCallback(() => {
+    setSearchParams((previous) => {
+      const next = new URLSearchParams(previous);
+      next.delete("date");
+      return next;
+    });
+  }, [setSearchParams]);
+
+  const earthquakes = (
+    <Box
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <Box style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+        {error ? (
+          <Alert color="red" title="Could not load earthquakes" m="sm">
+            <Text size="sm">{error.message}</Text>
+            {error instanceof ApiError && error.correlationId ? (
+              <Text size="xs" c="dimmed" mt="xs">
+                Correlation ID: {error.correlationId}
+              </Text>
+            ) : null}
+          </Alert>
+        ) : isPending ? (
+          <Text size="sm" c="dimmed" p="sm">
+            Loading earthquakes…
+          </Text>
+        ) : (
+          <EarthquakeList
+            items={items}
+            onSelect={handleSelectFromList}
+            selectedId={selected?.properties.id ?? null}
+            // Read from the response rather than restated from the contract, so the
+            // label cannot disagree with the data above it.
+            windowLabel={
+              formatWindowLabel(data?.time_range) ??
+              (selectedDate ? formatUtcDate(selectedDate) : null)
+            }
+          />
+        )}
+      </Box>
+      <EarthquakeDayNavigation
+        selectedDate={selectedDate}
+        availability={availability}
+        onSelectDate={selectDate}
+        onFollowLatest={followLatest}
+      />
+    </Box>
   );
 
   const assistant = assistantMounted.current ? (
@@ -328,7 +454,7 @@ export function HomeScreen() {
             the pane below the map. */}
         <Splitter.Pane
           defaultSize={wideViewport ? "360px" : "0%"}
-          min={wideViewport ? "180px" : "0%"}
+          min={wideViewport ? "300px" : "0%"}
           collapsible
           className="lytir-panel"
           style={{
@@ -351,7 +477,7 @@ export function HomeScreen() {
               >
                 {sidebarTitle}
               </Text>
-              {section(EARTHQUAKES, earthquakes)}
+              {section(EARTHQUAKES, earthquakes, true)}
               {section(ADMIN, <AdminView />, true)}
             </>
           ) : null}
@@ -395,7 +521,7 @@ export function HomeScreen() {
             section(ASSISTANT, assistant, true)
           ) : (
             <>
-              {section(EARTHQUAKES, earthquakes)}
+              {section(EARTHQUAKES, earthquakes, true)}
               {section(ASSISTANT, assistant, true)}
               {section(ADMIN, <AdminView />, true)}
             </>
